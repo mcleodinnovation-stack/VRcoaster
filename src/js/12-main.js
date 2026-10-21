@@ -83,64 +83,12 @@
       let session = null;
       let lastSelect = 0;
       button.addEventListener('click', async () => {
-  if (session) { await session.end(); return; }
-  try {
-    session = await xr.requestSession('immersive-vr', {
-      requiredFeatures: ['local-floor'],
-      optionalFeatures: ['bounded-floor']
-    });
-    const active = session;
-    const renderer = world.renderer;
-    
-    renderer.setPixelRatio(1);
-    world.sun.castShadow = false;
-    renderer.shadowMap.enabled = false;
-    world.setCameraMode('pov');
-    App.stopRide(true);
-    button.textContent = 'Exit VR';
-
-    // 1. ATTACH CAMERA TO CAR
-    if (world.cars && world.camera) {
-      world.cars.add(world.camera);
-      // Position inside the seat area (height offset)
-      world.camera.position.set(0, 1.2, 0); 
-      world.camera.rotation.set(0, 0, 0);
-    }
-
-    const onSelect = () => {
-      const now = performance.now();
-      if (now - lastSelect < 350) return;
-      lastSelect = now;
-      App.onRideButton();
-    };
-    active.addEventListener('select', onSelect);
-
-    active.addEventListener('end', () => {
-      // 2. DETACH CAMERA WHEN VR ENDS
-      if (world.cars && world.camera) {
-        world.scene.add(world.camera); // Move camera back to global scene
-      }
-
-      renderer.setAnimationLoop(null);
-      session = null;
-      button.textContent = '🥽 Enter VR';
-      world.sun.castShadow = App.settings.shadows;
-      renderer.shadowMap.enabled = App.settings.shadows;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-      world.resize();
-      if (App.state.riding && !App.state.paused) App.togglePause();
-      requestAnimationFrame(App.frame);
-    }, { once: true });
-
-    await renderer.xr.setSession(active);
-    
-    // Standard animation loop (no manual coordinate setting needed)
-    renderer.setAnimationLoop((time) => App.frame(time));
-
-  } catch (err) {
-    console.warn('VR session failed', err);
-  }
-});
+        if (session) { await session.end(); return; }
+        try {
+          // Must happen from a user gesture, not on page load.
+          session = await xr.requestSession('immersive-vr', {
+            optionalFeatures: ['local-floor', 'bounded-floor']
+          });
           const active = session;
           const renderer = world.renderer;
           renderer.setPixelRatio(1);
@@ -164,30 +112,24 @@
             world.sun.castShadow = App.settings.shadows;
             renderer.shadowMap.enabled = App.settings.shadows;
             renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            // Restore the normal desktop camera coordinate system.
+            world.vrRig.position.set(0, 0, 0);
+            world.vrRig.rotation.set(0, 0, 0);
+            world.camera.position.set(40, 30, 80);
+            world.camera.quaternion.identity();
+            world.blend = null;
             world.resize();
             if (App.state.riding && !App.state.paused) App.togglePause();
             requestAnimationFrame(App.frame);
           }, { once: true });
-          //await renderer.xr.setSession(active);
-         // renderer.setAnimationLoop((time) => App.frame(time));
-           await renderer.xr.setSession(active);
-
-renderer.setAnimationLoop((time) => {
-  // 1. Run the standard frame updates (updates car physics and positions)
-  App.frame(time);
-
-  // 2. Keep the WebXR camera attached to the lead coaster car
-  if (world && world.cars) {
-    const xrCamera = renderer.xr.getCamera();
-
-    // Copy position and orientation from the train/car group
-    world.cars.getWorldPosition(xrCamera.position);
-    world.cars.getWorldQuaternion(xrCamera.quaternion);
-
-    // Adjust head height so you sit inside the car seat (1.2m elevated above cart floor)
-    xrCamera.position.y += 1.2;
-  }
-});
+          // Keep headset tracking relative to the moving car, not world (0,0,0).
+          renderer.xr.setReferenceSpaceType('local-floor');
+          world.camera.position.set(0, 0, 0);
+          world.camera.quaternion.identity();
+          world.vrRig.position.set(0, 0, 0);
+          world.vrRig.rotation.set(0, 0, 0);
+          await renderer.xr.setSession(active);
+          renderer.setAnimationLoop((time) => App.frame(time));
           App.toast('🥽 VR ready! Press the Quest trigger to start or pause. Use the headset menu to exit.', '', 6500);
         } catch (err) {
           console.warn('VR session failed', err);

@@ -4283,6 +4283,13 @@ var FCWorld = (function () {
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 5000);
       this.camera.position.set(40, 30, 80);
+      // WebXR's tracked camera inherits this moving origin. Moving the camera
+      // alone is insufficient: the headset supplies its own per-eye transforms.
+      this.vrRig = new THREE.Group();
+      this.vrRig.name = 'Moving roller coaster VR seat';
+      this.scene.add(this.vrRig);
+      this.vrRig.add(this.camera);
+      this.vrSeatForward = new THREE.Vector3(0, 1, 0);
       this.skyColors = { top: new THREE.Color(0x2f6fcb), horizon: new THREE.Color(0xd6ecff), bottom: new THREE.Color(0xb8d4ea) };
       this.scene.fog = new THREE.Fog(this.skyColors.horizon.clone(), 200, 1500);
 
@@ -5152,16 +5159,20 @@ var FCWorld = (function () {
     updateCamera(dt, sim, poses, state) {
       const cam = this.camera;
       const mode = this.camMode;
-      // WebXR adds the headset's tracked pose to this base camera transform.
-      // Stay upright, face down the +X track direction, and let the rider look
-      // naturally in every direction. Do not pitch/roll with the track.
       if (this.renderer.xr.isPresenting) {
-        const p = poses && poses[0] && !poses[0].hidden ? poses[0] :
-          (this.track ? this.track.poseAt(this.track.segs[0], 0) : null);
-        if (p) {
-          cam.position.set(p.X, p.Y + 0.15, 0);
-          cam.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
-          cam.updateMatrixWorld(true);
+        // The lead car's transform is authoritative, including when stopped.
+        // Keep the horizon level for comfort, while steering the forward axis
+        // along the horizontal projection of the track (+X for this 2D ride).
+        const car = this.cars[0];
+        if (car && car.visible) {
+          // local-floor supplies headset eye height. The rig is placed at the
+          // seat/floor origin, NOT at eye height (which would double-count it).
+          this.vrRig.position.set(car.position.x, car.position.y + 0.80, car.position.z);
+          this.vrRig.rotation.set(0, -Math.PI / 2, 0);
+        } else if (this.track) {
+          const p = this.track.poseAt(this.track.segs[0], 0);
+          this.vrRig.position.set(p.X, p.Y + 1.22, 0);
+          this.vrRig.rotation.set(0, -Math.PI / 2, 0);
         }
         this.blend = null;
         return;
@@ -7992,10 +8003,22 @@ App.panels = (function () {
             world.sun.castShadow = App.settings.shadows;
             renderer.shadowMap.enabled = App.settings.shadows;
             renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            // Restore the normal desktop camera coordinate system.
+            world.vrRig.position.set(0, 0, 0);
+            world.vrRig.rotation.set(0, 0, 0);
+            world.camera.position.set(40, 30, 80);
+            world.camera.quaternion.identity();
+            world.blend = null;
             world.resize();
             if (App.state.riding && !App.state.paused) App.togglePause();
             requestAnimationFrame(App.frame);
           }, { once: true });
+          // Keep headset tracking relative to the moving car, not world (0,0,0).
+          renderer.xr.setReferenceSpaceType('local-floor');
+          world.camera.position.set(0, 0, 0);
+          world.camera.quaternion.identity();
+          world.vrRig.position.set(0, 0, 0);
+          world.vrRig.rotation.set(0, 0, 0);
           await renderer.xr.setSession(active);
           renderer.setAnimationLoop((time) => App.frame(time));
           App.toast('🥽 VR ready! Press the Quest trigger to start or pause. Use the headset menu to exit.', '', 6500);
