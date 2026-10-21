@@ -83,12 +83,63 @@
       let session = null;
       let lastSelect = 0;
       button.addEventListener('click', async () => {
-        if (session) { await session.end(); return; }
-        try {
-          // Must happen from a user gesture, not on page load.
-         session = await xr.requestSession('immersive-vr', {
-  requiredFeatures: ['local-floor'],
-  optionalFeatures: ['bounded-floor']
+  if (session) { await session.end(); return; }
+  try {
+    session = await xr.requestSession('immersive-vr', {
+      requiredFeatures: ['local-floor'],
+      optionalFeatures: ['bounded-floor']
+    });
+    const active = session;
+    const renderer = world.renderer;
+    
+    renderer.setPixelRatio(1);
+    world.sun.castShadow = false;
+    renderer.shadowMap.enabled = false;
+    world.setCameraMode('pov');
+    App.stopRide(true);
+    button.textContent = 'Exit VR';
+
+    // 1. ATTACH CAMERA TO CAR
+    if (world.cars && world.camera) {
+      world.cars.add(world.camera);
+      // Position inside the seat area (height offset)
+      world.camera.position.set(0, 1.2, 0); 
+      world.camera.rotation.set(0, 0, 0);
+    }
+
+    const onSelect = () => {
+      const now = performance.now();
+      if (now - lastSelect < 350) return;
+      lastSelect = now;
+      App.onRideButton();
+    };
+    active.addEventListener('select', onSelect);
+
+    active.addEventListener('end', () => {
+      // 2. DETACH CAMERA WHEN VR ENDS
+      if (world.cars && world.camera) {
+        world.scene.add(world.camera); // Move camera back to global scene
+      }
+
+      renderer.setAnimationLoop(null);
+      session = null;
+      button.textContent = '🥽 Enter VR';
+      world.sun.castShadow = App.settings.shadows;
+      renderer.shadowMap.enabled = App.settings.shadows;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      world.resize();
+      if (App.state.riding && !App.state.paused) App.togglePause();
+      requestAnimationFrame(App.frame);
+    }, { once: true });
+
+    await renderer.xr.setSession(active);
+    
+    // Standard animation loop (no manual coordinate setting needed)
+    renderer.setAnimationLoop((time) => App.frame(time));
+
+  } catch (err) {
+    console.warn('VR session failed', err);
+  }
 });
           const active = session;
           const renderer = world.renderer;
