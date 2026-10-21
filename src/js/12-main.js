@@ -122,20 +122,19 @@
            await renderer.xr.setSession(active);
 
 renderer.setAnimationLoop((time) => {
-  // 1. Run main application frame logic (updates physics & cart position)
+  // 1. Run the standard frame updates (updates car physics and positions)
   App.frame(time);
 
-  // 2. Keep the WebXR tracking rig attached to the cart mesh/position
-  if (world && world.cart) {
-    // If your world uses a WebXR camera container (dolly/rig):
+  // 2. Keep the WebXR camera attached to the lead coaster car
+  if (world && world.cars) {
     const xrCamera = renderer.xr.getCamera();
-    
-    // Copy position and rotation of the coaster cart to the VR camera frame
-    world.cart.getWorldPosition(xrCamera.position);
-    world.cart.getWorldQuaternion(xrCamera.quaternion);
 
-    // Elevated head-height offset inside the cart seat (adjust 1.2 if too high/low)
-    xrCamera.position.y += 1.2; 
+    // Copy position and orientation from the train/car group
+    world.cars.getWorldPosition(xrCamera.position);
+    world.cars.getWorldQuaternion(xrCamera.quaternion);
+
+    // Adjust head height so you sit inside the car seat (1.2m elevated above cart floor)
+    xrCamera.position.y += 1.2;
   }
 });
           App.toast('🥽 VR ready! Press the Quest trigger to start or pause. Use the headset menu to exit.', '', 6500);
