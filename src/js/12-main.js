@@ -86,9 +86,10 @@
         if (session) { await session.end(); return; }
         try {
           // Must happen from a user gesture, not on page load.
-          session = await xr.requestSession('immersive-vr', {
-            optionalFeatures: ['local-floor', 'bounded-floor']
-          });
+         session = await xr.requestSession('immersive-vr', {
+  requiredFeatures: ['local-floor'],
+  optionalFeatures: ['bounded-floor']
+});
           const active = session;
           const renderer = world.renderer;
           renderer.setPixelRatio(1);
@@ -116,8 +117,27 @@
             if (App.state.riding && !App.state.paused) App.togglePause();
             requestAnimationFrame(App.frame);
           }, { once: true });
-          await renderer.xr.setSession(active);
-          renderer.setAnimationLoop((time) => App.frame(time));
+          //await renderer.xr.setSession(active);
+         // renderer.setAnimationLoop((time) => App.frame(time));
+           await renderer.xr.setSession(active);
+
+renderer.setAnimationLoop((time) => {
+  // 1. Run main application frame logic (updates physics & cart position)
+  App.frame(time);
+
+  // 2. Keep the WebXR tracking rig attached to the cart mesh/position
+  if (world && world.cart) {
+    // If your world uses a WebXR camera container (dolly/rig):
+    const xrCamera = renderer.xr.getCamera();
+    
+    // Copy position and rotation of the coaster cart to the VR camera frame
+    world.cart.getWorldPosition(xrCamera.position);
+    world.cart.getWorldQuaternion(xrCamera.quaternion);
+
+    // Elevated head-height offset inside the cart seat (adjust 1.2 if too high/low)
+    xrCamera.position.y += 1.2; 
+  }
+});
           App.toast('🥽 VR ready! Press the Quest trigger to start or pause. Use the headset menu to exit.', '', 6500);
         } catch (err) {
           console.warn('VR session failed', err);
